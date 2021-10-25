@@ -5,20 +5,25 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <Wire.h>
+#include <SoftwareSerial.h>
 
-// Development mode
+// Compiler constants
 #define INDEV
 
 // ADAFRUIT library instance
 Adafruit_MPU6050 mpu;
 
+// BlueTooth instance
+SoftwareSerial BT(8,9);
+
 // Represents the state of the device.
 // @type Wearable_State
 Wearable_State state = AWAITING;
+bool LED_FLASH_STATE = false;
 
 // Let us define all the input/output pins defined.
 const int PIN_BUTTON_OUT = 2;
-const int PIN_LED = 8;
+const int PIN_LED = 4;
 
 // Setup function;
 // Runs when the arduino starts up.
@@ -29,12 +34,15 @@ void setup() {
 
     // Attach the interrupts;
     attachInterrupt(digitalPinToInterrupt(PIN_BUTTON_OUT), buttonIsPressed, FALLING);
-
+ 
     // Initialize Serial output
-    Serial.begin(9600);
+    Serial.begin(19200);
 
     // Run hardware initialization functions
     initMPU();
+    initBLE();
+
+    BT.println("AT");
 }
 
 // Loops
@@ -47,9 +55,21 @@ void loop() {
             detectAcceleration();
         break;
 
+        case ALERTED:
+            if(LED_FLASH_STATE) {
+                digitalWrite(PIN_LED, HIGH);
+                LED_FLASH_STATE = false; 
+            } else {
+                digitalWrite(PIN_LED, LOW);
+                LED_FLASH_STATE = true;
+            }
+
+            delay(500);
+        break;
+
     }
     
-    delay(50);
+//    delay(50);
 
 }
 
@@ -68,12 +88,6 @@ void detectAcceleration() {
     mpu.getEvent(&a, &g, &temp);
 
     float accelerationZ = a.acceleration.z;
-
-    Serial.print("# Threshold: ");
-    Serial.print(detectionThreshold);
-    Serial.print(", detected: ");
-    Serial.print(accelerationZ);
-    Serial.println("m/s^2");
 
     if(accelerationZ > detectionThreshold) {
         Serial.println(accelerationZ);
@@ -95,19 +109,24 @@ void initMPU() {
     mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
 }
 
+void initBLE() {
+    BT.begin(9600);
+}
+
 // When either the button is pressed or a fall is detected, initialize the alerted state;
 void initAlertedState() {
     state = ALERTED;
-    Serial.println("Triggered Alarm State");
-
-    digitalWrite(PIN_LED, HIGH);
+    
+    // Send the BT ACTIVATE command to the docking station
+    BT.println('1');
 }
 
 void deactivateAlert() {
     state = AWAITING;
-    Serial.println("Deactivated Alarm.");
-
     digitalWrite(PIN_LED, LOW);
+
+    // Send the BT CANCEL command to the docking station
+    BT.println('0');
 }
 
 // buttonIsPressed() is activated by an interrupt on the PIN_BUTTON_OUT port.
